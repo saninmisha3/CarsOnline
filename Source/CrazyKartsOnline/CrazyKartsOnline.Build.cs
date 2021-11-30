@@ -8,7 +8,21 @@ public class CrazyKartsOnline : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "PhysXVehicles", "HeadMountedDisplay" });
+		PublicDependencyModuleNames.AddRange(new string[]
+		{
+			"Core",
+			"CoreUObject",
+			"Engine",
+			"InputCore",
+			"PhysXVehicles",
+			"HeadMountedDisplay",
+			"ChaosVehicles",
+		});
+		
+		PublicIncludePaths.AddRange(new string[]
+		{
+			"CrazyKartsOnline/Public/Karts",
+		});
 
 		PublicDefinitions.Add("HMD_MODULE_INCLUDED=1");
 	}
