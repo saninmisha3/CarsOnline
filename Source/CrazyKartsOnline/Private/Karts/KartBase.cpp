@@ -3,9 +3,9 @@
 #include "Karts/KartBase.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/SpringArmComponent.h"
-#include "ChaosWheeledVehicleMovementComponent.h"
-#include "DrawDebugHelpers.h"
 #include "Components/BoxComponent.h"
+#include "Net/UnrealNetwork.h"
+
 
 AKartBase::AKartBase()
 {
@@ -35,16 +35,7 @@ AKartBase::AKartBase()
     Camera->bUsePawnControlRotation = false;
     Camera->FieldOfView = 90.f;
 
-    // Vehicle Params
-    MaxDrivingForce = 10000.f;
-    Mass = 1000.f;
-    Velocity = FVector::ZeroVector;
-    MaxDegreesPerSecond = 90.f;
-    MinSteeringRadius = 10.f;
-
-    // Gravity Params
-    DragCoefficient = 16.f;
-    RollingResistanceCoefficient = 0.015f;
+    MovementComponent = CreateDefaultSubobject<UKartMovementComponent>(TEXT("MovementComponent"));
 }
 
 void AKartBase::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -54,89 +45,67 @@ void AKartBase::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
     // Set up gameplay key bindings
     check(PlayerInputComponent)
     
-    PlayerInputComponent->BindAxis("MoveForward", this, &AKartBase::Server_MoveForward);
-    PlayerInputComponent->BindAxis("MoveRight", this, &AKartBase::Server_MoveRight);
+    PlayerInputComponent->BindAxis("MoveForward", this, &AKartBase::MoveForward);
+    PlayerInputComponent->BindAxis("MoveRight", this, &AKartBase::MoveRight);
 }
 
 void AKartBase::BeginPlay()
 {
 	Super::BeginPlay();
-	
-}
 
-void AKartBase::Server_MoveForward_Implementation(const float Amount)
-{
-    Throttle = Amount;
-}
-
-bool AKartBase::Server_MoveForward_Validate(const float Amount)
-{
-    return Amount >= -1 && Amount <= 1;
-}
-
-void AKartBase::Server_MoveRight_Implementation(const float Amount)
-{
-    Steering = Amount;
-}
-
-bool AKartBase::Server_MoveRight_Validate(const float Amount)
-{
-    return Amount >= -1 && Amount <= 1;
+    check(MovementComponent);
+    
+	if(GetLocalRole() == ROLE_Authority)
+	{
+	    NetUpdateFrequency = 1;
+	}
 }
 
 void AKartBase::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
-    
-    UpdateVelocity(DeltaTime);
 }
 
-FVector AKartBase::GetAirResistance() const
+void AKartBase::MoveForward(const float Amount)
 {
-    return - Velocity.GetSafeNormal() * Velocity.SizeSquared() * DragCoefficient;
+    GetKartMovement()->SetThrottle(Amount);
 }
 
-FVector AKartBase::GetRollingResistance() const
+void AKartBase::MoveRight(const float Amount)
 {
-    const auto CorrectGravity = -(GetWorld()->GetGravityZ() / 100); // Unreal Gravity — -980.0, Correct Gravity — 9.81
-    const auto NormalForce = Mass * CorrectGravity;
-    return - Velocity.GetSafeNormal() * RollingResistanceCoefficient * NormalForce;
+    GetKartMovement()->SetSteering(Amount);
 }
 
-void AKartBase::ApplyRotation(const float DeltaTime)
+void AKartBase::OnRep_ServerMoveState()
 {
-    // Find the rotation angle
-    const float DeltaLocation = FVector::DotProduct(GetActorForwardVector(), Velocity) * DeltaTime;
-    // MinSteeringRadius = 10.f
-    const float RotationAngle = DeltaLocation / MinSteeringRadius * Steering;
-    const FQuat RotationDelta(GetActorUpVector(), RotationAngle);
+    SetActorTransform(ServerMoveState.Transform);
+    GetKartMovement()->SetVelocity(ServerMoveState.Velocity);
 
-    Velocity = RotationDelta.RotateVector(Velocity);
-    AddActorWorldRotation(RotationDelta);
-}
+    GetKartMovement()->ClearUnacknowledgedMove(ServerMoveState.LastMove);
 
-void AKartBase::UpdateVelocity(const float DeltaTime)
-{
-    // Find the direction & speed for movement
-    FVector Force = GetActorForwardVector() * MaxDrivingForce * Throttle;
-    
-    // Add AirResistance in order to limit max speed 
-    Force += GetAirResistance();
-
-    // Add RollingResistance in order to stop vehicle if no force
-    Force += GetRollingResistance();
-    
-    const FVector Acceleration = Force / Mass;
-
-
-    Velocity = Velocity + Acceleration * DeltaTime;
-    
-    FHitResult HitResult;
-    AddActorWorldOffset(Velocity,true, &HitResult);
-    ApplyRotation(DeltaTime);
-    
-    if(HitResult.bBlockingHit)
+    for(const auto& Move : GetKartMovement()->GetUnacknowledgedMoves())
     {
-        Velocity = FVector::ZeroVector;
+         GetKartMovement()->SimulatingMove(Move);
     }
+}
+
+void AKartBase::Server_SendMove_Implementation(const FMoveData& MoveData)
+{
+    GetKartMovement()->SimulatingMove(MoveData);
+
+    ServerMoveState.Transform = GetActorTransform();
+    ServerMoveState.Velocity = GetKartMovement()->GetVelocity();
+    ServerMoveState.LastMove = MoveData;
+}
+
+bool AKartBase::Server_SendMove_Validate(const FMoveData& MoveData)
+{
+    return true;
+}
+
+void AKartBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+    DOREPLIFETIME(AKartBase, ServerMoveState);
 }

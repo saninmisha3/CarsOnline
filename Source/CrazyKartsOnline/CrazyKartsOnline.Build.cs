@@ -22,6 +22,7 @@ public class CrazyKartsOnline : ModuleRules
 		PublicIncludePaths.AddRange(new string[]
 		{
 			"CrazyKartsOnline/Public/Karts",
+			"CrazyKartsOnline/Public/Components",
 		});
 
 		PublicDefinitions.Add("HMD_MODULE_INCLUDED=1");

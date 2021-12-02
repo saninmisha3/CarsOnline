@@ -2,13 +2,28 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Components/KartMovementComponent.h"
 #include "GameFramework/Pawn.h"
 #include "KartBase.generated.h"
-
 
 class UBoxComponent;
 class USpringArmComponent;
 class UCameraComponent;
+
+USTRUCT()
+struct FMoveState
+{
+    GENERATED_BODY()
+
+    UPROPERTY()
+    FMoveData LastMove;
+
+    UPROPERTY()
+    FTransform Transform;
+    
+    UPROPERTY()
+    FVector Velocity;
+};
 
 UCLASS()
 class CRAZYKARTSONLINE_API AKartBase : public APawn
@@ -29,60 +44,31 @@ class CRAZYKARTSONLINE_API AKartBase : public APawn
     /** Camera component that will be our viewpoint **/
     UPROPERTY(VisibleAnywhere, Category="Camera")
     UCameraComponent* Camera;
-
-    /** The mass of vehicle. Default = 100 kg. **/
-    UPROPERTY(EditDefaultsOnly, Category="Vehicle")
-    float Mass;
-
-    /** Set up max force for vehicle. Default = 10000 N. **/
-    UPROPERTY(EditDefaultsOnly, Category="Vehicle")
-    float MaxDrivingForce;
-
-    /** The maximal steering rotation angle per second **/
-    UPROPERTY(EditDefaultsOnly, Category="Vehicle")
-    float MaxDegreesPerSecond;
-
-    /** Drag Coefficient for calculating Air Resistance **/
-    UPROPERTY(EditDefaultsOnly, Category="Gravity")
-    float DragCoefficient;
-
-    /** Rolling Resistance Coefficient for ordinary car tires **/
-    UPROPERTY(EditDefaultsOnly, Category="Gravity")
-    float RollingResistanceCoefficient;
-
-    UPROPERTY(EditDefaultsOnly, Category="Vehicle")
-    float MinSteeringRadius;
     
-    float Throttle;
-    float Steering;
-    
-    FVector Velocity;
+    UPROPERTY(ReplicatedUsing="OnRep_ServerMoveState")
+    FMoveState ServerMoveState;
+
+    UFUNCTION()
+    void OnRep_ServerMoveState();
     
 public:
 	AKartBase();
 
+    FORCEINLINE UKartMovementComponent* GetKartMovement() const { return MovementComponent; }
+    
 protected:
-	virtual void BeginPlay() override;
-
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Movement")
+    UKartMovementComponent* MovementComponent;
+    
+    virtual void BeginPlay() override;
     /** Handle pressing forward **/
-    UFUNCTION(Server, Reliable, WithValidation)
-    void Server_MoveForward(const float Amount);
-
+    void MoveForward(const float Amount);
+    
     /** Handle pressing right **/
+    void MoveRight(const float Amount);
+    
     UFUNCTION(Server, Reliable, WithValidation)
-    void Server_MoveRight(const float Amount);
-
-    /** Calculate Force & Acceleration **/
-    void UpdateVelocity(const float DeltaTime);
-
-    /** Calculate Steering angle **/
-    void ApplyRotation(const float DeltaTime);
-
-    /** Calculate Air Resistance **/
-    FVector GetAirResistance() const;
-
-    /** Calculate Rolling Resistance **/
-    FVector GetRollingResistance() const;
+    void Server_SendMove(const FMoveData& MoveData);
     
 public:    
 	virtual void Tick(float DeltaTime) override;
