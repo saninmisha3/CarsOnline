@@ -1,15 +1,14 @@
 
-
 #include "Karts/KartBase.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Components/BoxComponent.h"
-#include "Net/UnrealNetwork.h"
-
+#include "Components/KartMovementComponent.h"
+#include "Components/KartReplicationComponent.h"
 
 AKartBase::AKartBase()
 {
- 	PrimaryActorTick.bCanEverTick = true;
+ 	PrimaryActorTick.bCanEverTick = false;    
     
     Collision = CreateDefaultSubobject<UBoxComponent>(TEXT("Collision"));
     Collision->InitBoxExtent(FVector(220.f, 85.f,55.f));
@@ -36,12 +35,16 @@ AKartBase::AKartBase()
     Camera->FieldOfView = 90.f;
 
     MovementComponent = CreateDefaultSubobject<UKartMovementComponent>(TEXT("MovementComponent"));
+    ReplicationComponent = CreateDefaultSubobject<UKartReplicationComponent>(TEXT("ReplicationComponent"));
 }
 
 void AKartBase::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
     Super::SetupPlayerInputComponent(PlayerInputComponent);
-
+    
+    SetReplicates(true);
+    SetReplicateMovement(false);
+    
     // Set up gameplay key bindings
     check(PlayerInputComponent)
     
@@ -54,16 +57,7 @@ void AKartBase::BeginPlay()
 	Super::BeginPlay();
 
     check(MovementComponent);
-    
-	if(GetLocalRole() == ROLE_Authority)
-	{
-	    NetUpdateFrequency = 1;
-	}
-}
-
-void AKartBase::Tick(float DeltaTime)
-{
-    Super::Tick(DeltaTime);
+    check(ReplicationComponent);
 }
 
 void AKartBase::MoveForward(const float Amount)
@@ -74,38 +68,4 @@ void AKartBase::MoveForward(const float Amount)
 void AKartBase::MoveRight(const float Amount)
 {
     GetKartMovement()->SetSteering(Amount);
-}
-
-void AKartBase::OnRep_ServerMoveState()
-{
-    SetActorTransform(ServerMoveState.Transform);
-    GetKartMovement()->SetVelocity(ServerMoveState.Velocity);
-
-    GetKartMovement()->ClearUnacknowledgedMove(ServerMoveState.LastMove);
-
-    for(const auto& Move : GetKartMovement()->GetUnacknowledgedMoves())
-    {
-         GetKartMovement()->SimulatingMove(Move);
-    }
-}
-
-void AKartBase::Server_SendMove_Implementation(const FMoveData& MoveData)
-{
-    GetKartMovement()->SimulatingMove(MoveData);
-
-    ServerMoveState.Transform = GetActorTransform();
-    ServerMoveState.Velocity = GetKartMovement()->GetVelocity();
-    ServerMoveState.LastMove = MoveData;
-}
-
-bool AKartBase::Server_SendMove_Validate(const FMoveData& MoveData)
-{
-    return true;
-}
-
-void AKartBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
-{
-    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-
-    DOREPLIFETIME(AKartBase, ServerMoveState);
 }

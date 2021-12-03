@@ -5,6 +5,8 @@
 UKartMovementComponent::UKartMovementComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
+
+    SetIsReplicated(true);
     
     // Vehicle Params
     MaxDrivingForce = 10000.f;
@@ -16,40 +18,6 @@ UKartMovementComponent::UKartMovementComponent()
     // Gravity Params
     DragCoefficient = 16.f;
     RollingResistanceCoefficient = 0.015f;
-}
-
-void UKartMovementComponent::BeginPlay()
-{
-	Super::BeginPlay();
-}
-
-void UKartMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
-{
-	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-    UploadMovement(DeltaTime);
-}
-
-void UKartMovementComponent::UploadMovement(const float DeltaTime)
-{
-    const auto MoveData = GetMoveData(DeltaTime);
-    SimulatingMove(MoveData);
-    UnacknowledgedMoves.Add(MoveData);
-    
-    if(GetOwner()->GetLocalRole() == ROLE_AutonomousProxy)
-    {
-        //Server_SendMove(MoveData);
-    }
-
-    if(GetOwner()->GetLocalRole() == ROLE_Authority && GetOwner()->GetRemoteRole() == ROLE_SimulatedProxy)
-    {
-        //const auto MoveData = GetMoveData(DeltaTime);
-        //Server_SendMove(MoveData);
-    }
-
-    if(GetOwner()->GetLocalRole() == ROLE_SimulatedProxy)
-    {
-        //SimulatingMove(ServerMoveState.LastMove);
-    }
 }
 
 FVector UKartMovementComponent::GetAirResistance() const
@@ -64,6 +32,17 @@ FVector UKartMovementComponent::GetRollingResistance() const
     return - Velocity.GetSafeNormal() * RollingResistanceCoefficient * NormalForce;
 }
 
+void UKartMovementComponent::TickComponent(float DeltaTime, ELevelTick Tick, FActorComponentTickFunction* ThisTickFunction)
+{
+    Super::TickComponent(DeltaTime, Tick, ThisTickFunction);
+
+    if(GetOwnerRole() == ROLE_AutonomousProxy || GetOwner()->GetRemoteRole() == ROLE_SimulatedProxy)
+    {
+        LastMove = GetMoveData(DeltaTime);
+        SimulatingMove(LastMove);
+    }
+}
+
 void UKartMovementComponent::ApplyRotation(const float DeltaTime, const float SteeringThrow)
 {
     // Find the rotation angle
@@ -76,7 +55,7 @@ void UKartMovementComponent::ApplyRotation(const float DeltaTime, const float St
     GetOwner()->AddActorWorldRotation(RotationDelta);
 }
 
-void UKartMovementComponent::SimulatingMove(const FMoveData MoveData)
+void UKartMovementComponent::SimulatingMove(const FMoveData& MoveData)
 {
     // Find the direction & speed for movement
     FVector Force = GetOwner()->GetActorForwardVector() * MaxDrivingForce * MoveData.Throttle;
@@ -101,12 +80,12 @@ void UKartMovementComponent::SimulatingMove(const FMoveData MoveData)
     }
 }
 
-void UKartMovementComponent::ClearUnacknowledgedMove(const FMoveData LastMove)
+void UKartMovementComponent::ClearUnacknowledgedMove(const FMoveData& CurMove)
 {
     TArray<FMoveData> NewMoves;
     for(const auto& Move: UnacknowledgedMoves)
     {
-        if(Move.Time > LastMove.Time)
+        if(Move.Time > CurMove.Time)
         {
             NewMoves.Add(Move);
         }

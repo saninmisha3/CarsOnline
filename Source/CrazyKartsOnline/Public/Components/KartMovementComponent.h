@@ -21,6 +21,11 @@ struct FMoveData
 
     UPROPERTY()
     float Time;
+
+    bool IsValid() const
+    {
+        return (Throttle <= 1 && Throttle >= -1) && (Steering <= 1 && Steering >= -1); 
+    }
 };
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
@@ -50,21 +55,22 @@ class CRAZYKARTSONLINE_API UKartMovementComponent : public UActorComponent
 
     UPROPERTY(EditDefaultsOnly, Category="Vehicle")
     float MinSteeringRadius;
-
-    TArray<FMoveData> UnacknowledgedMoves;
     
     float Throttle;
     float Steering;
     
     FVector Velocity;
 
-    FMoveData GetMoveData(float DeltaTime) const;
+    FMoveData LastMove;
 
 public:	
 	UKartMovementComponent();
     
-    void SimulatingMove(const FMoveData MoveData);
-    void ClearUnacknowledgedMove(const FMoveData LastMove);
+    TArray<FMoveData> UnacknowledgedMoves;
+    
+    FMoveData GetMoveData(float DeltaTime) const;
+    void SimulatingMove(const FMoveData& MoveData);
+    void ClearUnacknowledgedMove(const FMoveData& LastMove);
     
     FORCEINLINE FVector GetVelocity() const { return Velocity; }
     FORCEINLINE void SetVelocity(const FVector NewVelocity) { Velocity = NewVelocity; }
@@ -72,14 +78,12 @@ public:
     FORCEINLINE void SetThrottle(const float Amount) { Throttle = Amount; }
     FORCEINLINE void SetSteering(const float Amount) { Steering = Amount; }
 
-    FORCEINLINE TArray<FMoveData>& GetUnacknowledgedMoves() { return UnacknowledgedMoves; }
+    FORCEINLINE FMoveData GetLastMove() const { return LastMove; }
 
+    virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+    
 protected:
-	virtual void BeginPlay() override;
-
-    /** Calculate Force & Acceleration **/
-    void UploadMovement(const float DeltaTime);
-
+    
     /** Calculate Steering angle **/
     void ApplyRotation(const float DeltaTime, const float SteeringThrow);
 
@@ -88,7 +92,4 @@ protected:
 
     /** Calculate Rolling Resistance **/
     FVector GetRollingResistance() const;
-
-public:	
-	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 };
